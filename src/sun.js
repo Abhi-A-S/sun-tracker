@@ -268,6 +268,46 @@ function syncDirectionalLight(sunSystem, position, elevation) {
   }
 }
 
+export function updateHardwareSun(sunSystem, trackerAngle, isNight) {
+
+    const radius = sunSystem.config.orbitRadius;
+
+    // Map tracker angle (-30 to 30) to the sun path
+    const theta = THREE.MathUtils.mapLinear(
+        trackerAngle,
+        -30,
+         30,
+        Math.PI,
+        0
+    );
+
+    const position = new THREE.Vector3(
+        sunSystem.config.centerX + radius * Math.cos(theta),
+        sunSystem.config.horizonHeight + radius * Math.sin(theta),
+        sunSystem.config.centerZ
+    );
+
+    sunSystem.sunGroup.position.copy(position);
+
+    if (isNight) {
+
+        sunSystem.sunGroup.visible = false;
+        sunSystem.directionalLight.intensity = 0;
+
+    } else {
+
+        sunSystem.sunGroup.visible = true;
+
+        syncDirectionalLight(
+            sunSystem,
+            position,
+            45
+        );
+
+    }
+
+}
+
 function lerpAngle(current, target, amount) {
   return current + angleDelta(target, current) * amount
 }

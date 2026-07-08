@@ -6,7 +6,8 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { createDashboard } from './ui.js'
 import {
   createSunSystem,
-  updateSunPosition,  
+  updateSunPosition, 
+  updateHardwareSun
 } from './sun.js'
 
 const socket = new WebSocket("ws://localhost:8081");
@@ -21,6 +22,12 @@ socket.onmessage = (event) => {
             THREE.MathUtils.degToRad(data.angle);
     }
 
+    updateHardwareSun(
+        sunSystem,
+        data.angle,
+        data.direction === "NIGHT"
+    );
+
     dashboard.updateSensorData({
         angle: data.angle,
         left: data.left,
@@ -29,12 +36,23 @@ socket.onmessage = (event) => {
     });
 
     dashboard.updateSunTracking({
+
+        elevation:
+            data.direction === "NIGHT"
+                ? -5
+                : 45,
+
+        azimuth: data.angle,
+
         trackingStatus:
             data.direction === "CENTER"
                 ? "Centered"
                 : data.direction === "LEFT"
                 ? "Tracking Left"
-                : "Tracking Right"
+                : data.direction === "RIGHT"
+                ? "Tracking Right"
+                : "Night Mode"
+
     });
 
     dashboard.updateConnectionLabels({
@@ -342,13 +360,9 @@ function updateSunDashboard(sunState, trackerState) {
   const isModelReady = Boolean(panelObject)
 
   dashboard.updateSunTracking({
-    elevation: sunState.elevation,
-    azimuth: sunState.azimuth,
-    trackingStatus:
-    isModelReady
-        ? "Centered"
-        : "Waiting for model",
-    dayProgress: sunState.dayProgress
+      elevation: sunState.elevation,
+      azimuth: sunState.azimuth,
+      dayProgress: sunState.dayProgress
   })
 }
 
@@ -359,17 +373,17 @@ function animate() {
 
     requestAnimationFrame(animate);
 
-    currentSunState = updateSunPosition(sunSystem);
+    // currentSunState = updateSunPosition(sunSystem);
 
-    dashboardUpdateElapsed += delta;
+    // dashboardUpdateElapsed += delta;
 
-    if (dashboardUpdateElapsed >= 0.25) {
+    // if (dashboardUpdateElapsed >= 0.25) {
 
-        updateSunDashboard(currentSunState);
+    //     updateSunDashboard(currentSunState);
 
-        dashboardUpdateElapsed = 0;
+    //     dashboardUpdateElapsed = 0;
 
-    }
+    // }
 
     controls.update();
 
