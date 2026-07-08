@@ -6,26 +6,59 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { createDashboard } from './ui.js'
 import {
   createSunSystem,
-  setAutoTracking as setSunAutoTracking,
-  setSunDayProgress,
-  setSunTimeSpeed,
-  updateSunPosition,
-  updateTrackerRotation
+  updateSunPosition,  
 } from './sun.js'
 
-let solarTracker
+const socket = new WebSocket("ws://localhost:8081");
+socket.onmessage = (event) => {
+
+    const data = JSON.parse(event.data);
+
+    console.log(data);
+
+    if (panelObject) {
+        panelObject.rotation.x =
+            THREE.MathUtils.degToRad(data.angle);
+    }
+
+    dashboard.updateSensorData({
+        angle: data.angle,
+        left: data.left,
+        right: data.right,
+        difference: (data.normalized * 100).toFixed(1)
+    });
+
+    dashboard.updateSunTracking({
+        trackingStatus:
+            data.direction === "CENTER"
+                ? "Centered"
+                : data.direction === "LEFT"
+                ? "Tracking Left"
+                : "Tracking Right"
+    });
+
+    dashboard.updateConnectionLabels({
+        pico: "Awaiting device",
+        mqtt: "Connected",
+        websocket: "Connected"
+    });
+
+};
+
+let baseModel
+let panelModel
+let panelObject
+
 let dashboard
 let sunSystem
 let currentSunState
-let telemetryTimer
 let dashboardUpdateElapsed = 0
 let targetTiltAngle = 32
 const clock = new THREE.Clock()
-const trackerBounds = new THREE.Box3()
-const GROUND_CLEARANCE = 0.02
 const TRACKER_OFFSET_X = 0
-const TRACKER_OFFSET_Z = -2
-const SUN_OFFSET_Z = 7
+const TRACKER_OFFSET_Z = 0
+const SUN_OFFSET_Z = 0
+const MODEL_SCALE = 0.02
 
 // Scene
 const scene = new THREE.Scene()
@@ -55,30 +88,23 @@ document.body.innerHTML = ''
 document.body.appendChild(renderer.domElement)
 
 dashboard = createDashboard({
-  onTiltChange: (angle) => {
-    setDashboardAutoTracking(false)
-    applyPanelTilt(angle)
-  },
-  onStart: startTelemetrySimulation,
-  onStop: stopTelemetrySimulation,
-  onReset: resetTrackerDashboard,
-  onAutoTrackingChange: (enabled) => {
-    setDashboardAutoTracking(enabled)
-  },
-  onTimeSpeedChange: (multiplier) => {
-    if (sunSystem) {
-      setSunTimeSpeed(sunSystem, multiplier)
+    onTimeSpeedChange: (multiplier) => {
+        if (sunSystem) {
+            setSunTimeSpeed(sunSystem, multiplier);
+        }
+    },
+
+    onManualSunPositionChange: (dayProgress) => {
+        if (sunSystem) {
+            currentSunState = setSunDayProgress(
+                sunSystem,
+                dayProgress
+            );
+
+            updateSunDashboard(currentSunState);
+        }
     }
-  },
-  onManualSunPositionChange: (dayProgress) => {
-    if (sunSystem) {
-      currentSunState = setSunDayProgress(sunSystem, dayProgress)
-      updateSunDashboard(currentSunState, {
-        tiltAngle: targetTiltAngle
-      })
-    }
-  }
-})
+});
 
 dashboard.updateConnectionLabels({
   esp32: 'ESP32 placeholder',
@@ -102,13 +128,19 @@ dirLight.shadow.camera.far = 50
 dirLight.shadow.bias = -0.0005
 
 scene.add(dirLight) 
+// Constant fill light
+const fillLight = new THREE.DirectionalLight(0xffffff, 0.5)
+
+fillLight.position.set(-8, 12, -8)
+
+fillLight.castShadow = false
+
+scene.add(fillLight)
 
 sunSystem = createSunSystem(scene, dirLight, {
   centerZ: SUN_OFFSET_Z
 })
 currentSunState = updateSunPosition(sunSystem, 0)
-dashboard.setAutoTracking(sunSystem.autoTracking)
-dashboard.setTimeSpeed(sunSystem.timeSpeedMultiplier)
 updateSunDashboard(currentSunState, {
   tiltAngle: targetTiltAngle
 })
@@ -149,7 +181,7 @@ controls.update()
 
 // Loader
 const loader = new GLTFLoader()
-
+/*
 loader.load(
 
   '/models/model.glb',
@@ -214,7 +246,78 @@ loader.load(
 
   }
 
-)
+)*/
+
+loader.load('/models/Base.glb', (gltf) => {
+
+    baseModel = gltf.scene
+
+    scene.add(baseModel)
+
+    baseModel.scale.setScalar(MODEL_SCALE)
+    baseModel.rotation.y = THREE.MathUtils.degToRad(90)
+
+    const box = new THREE.Box3().setFromObject(baseModel)
+    const center = box.getCenter(new THREE.Vector3())
+
+    baseModel.position.x += TRACKER_OFFSET_X - center.x
+    baseModel.position.z += TRACKER_OFFSET_Z - center.z
+    baseModel.position.y -= box.min.y
+
+    baseModel.traverse((child) => {
+
+        if (child.isMesh) {
+
+            child.castShadow = true
+            child.receiveShadow = true
+            child.material.side = THREE.DoubleSide
+            child.material.flatShading = false
+            child.material.needsUpdate = true
+
+        }
+
+    })
+
+    console.log("Base Loaded")
+
+})
+
+loader.load('/models/Panel.glb', (gltf) => {
+
+    panelModel = gltf.scene
+
+    panelObject = panelModel.getObjectByName("panel")
+
+    scene.add(panelModel)
+
+    panelModel.scale.setScalar(MODEL_SCALE)
+    panelModel.rotation.y = THREE.MathUtils.degToRad(90)
+
+    const box = new THREE.Box3().setFromObject(panelModel)
+    const center = box.getCenter(new THREE.Vector3())
+
+    panelModel.position.x += TRACKER_OFFSET_X - center.x
+    panelModel.position.z += TRACKER_OFFSET_Z - center.z
+    panelModel.position.y -= box.min.y
+    panelModel.position.y += 2.2
+
+    panelModel.traverse((child) => {
+
+        if (child.isMesh) {
+
+            child.castShadow = true
+            child.receiveShadow = true
+            child.material.side = THREE.DoubleSide
+            child.material.flatShading = false
+            child.material.needsUpdate = true
+
+        }
+
+    })
+
+    console.log("Panel Loaded")
+
+})
 
 // Resize
 window.addEventListener('resize', () => {
@@ -225,155 +328,53 @@ window.addEventListener('resize', () => {
   renderer.setSize(window.innerWidth, window.innerHeight)
 })
 
-function applyPanelTilt(angle) {
-  targetTiltAngle = angle
-
-  if (solarTracker) {
-    solarTracker.rotation.x = 0
-    solarTracker.rotation.y = 0
-    solarTracker.rotation.z = THREE.MathUtils.degToRad(angle)
-    keepTrackerAboveGround()
-  }
-}
-
-function keepTrackerAboveGround() {
-  if (!solarTracker) {
-    return
-  }
-
-  trackerBounds.setFromObject(solarTracker)
-  solarTracker.position.y += GROUND_CLEARANCE - trackerBounds.min.y
-}
-
-function startTelemetrySimulation() {
-  dashboard.updateConnectionLabels({
-    esp32: 'ESP32 simulator',
-    transport: 'WebSocket placeholder'
-  })
-
-  if (telemetryTimer) {
-    return
-  }
-
-  pushDummyTelemetry()
-  telemetryTimer = window.setInterval(pushDummyTelemetry, 1500)
-}
-
-function stopTelemetrySimulation() {
-  if (telemetryTimer) {
-    window.clearInterval(telemetryTimer)
-    telemetryTimer = null
-  }
-
-  dashboard.updateConnectionLabels({
-    esp32: 'ESP32 standby',
-    transport: 'MQTT/WebSocket idle'
-  })
-}
-
-function resetTrackerDashboard() {
-  stopTelemetrySimulation()
-  applyPanelTilt(0)
-  setDashboardAutoTracking(true)
-
-  if (sunSystem) {
-    setSunTimeSpeed(sunSystem, 1)
-    currentSunState = setSunDayProgress(sunSystem, sunSystem.config.initialDayProgress)
-    dashboard.setTimeSpeed(1)
-  }
-
-  dashboard.updateStatus({
-    online: true,
-    connection: 'Reset to idle'
-  })
-  dashboard.updateConnectionLabels({
-    esp32: 'ESP32 placeholder',
-    transport: 'MQTT/WebSocket placeholder'
-  })
-}
-
 function setDashboardAutoTracking(enabled) {
   if (sunSystem) {
     setSunAutoTracking(sunSystem, enabled)
   }
-
-  if (dashboard) {
-    dashboard.setAutoTracking(enabled)
-  }
-}
-
-function pushDummyTelemetry() {
-  // Future MQTT/WebSocket integration can replace this dummy payload with
-  // real ESP32 telemetry before calling dashboard.updateSensorData().
-  dashboard.updateSensorData({
-    angle: targetTiltAngle,
-    sunIntensity: calculateLdrSunIntensity(currentSunState)
-  })
-}
+} 
 
 function updateSunDashboard(sunState, trackerState) {
   if (!sunState || !dashboard) {
     return
   }
 
-  const isModelReady = Boolean(solarTracker)
+  const isModelReady = Boolean(panelObject)
 
   dashboard.updateSunTracking({
     elevation: sunState.elevation,
     azimuth: sunState.azimuth,
-    trackingStatus: isModelReady
-      ? sunSystem.autoTracking
-        ? 'Auto tracking'
-        : 'Manual control'
-      : 'Waiting for model',
+    trackingStatus:
+    isModelReady
+        ? "Centered"
+        : "Waiting for model",
     dayProgress: sunState.dayProgress
   })
-
-  dashboard.updateSensorData({
-    sunIntensity: calculateLdrSunIntensity(sunState)
-  })
-
-  if (sunSystem.autoTracking && isModelReady) {
-    targetTiltAngle = trackerState.tiltAngle
-    dashboard.setTiltAngle(trackerState.tiltAngle)
-  }
-}
-
-function calculateLdrSunIntensity(sunState) {
-  if (!sunState || typeof sunState.elevation !== 'number') {
-    return 0
-  }
-
-  return THREE.MathUtils.clamp(Math.round((sunState.elevation / 78) * 100), 0, 100)
 }
 
 // Animation loop
 function animate() {
-  const delta = clock.getDelta()
-  
-  requestAnimationFrame(animate)
 
-  currentSunState = updateSunPosition(sunSystem, delta)
+    const delta = clock.getDelta();
 
-  const trackerState = updateTrackerRotation({
-    trackerRoot: solarTracker,
-    sunState: currentSunState,
-    deltaSeconds: delta,
-    autoTracking: sunSystem.autoTracking
-  })
+    requestAnimationFrame(animate);
 
-  keepTrackerAboveGround()
+    currentSunState = updateSunPosition(sunSystem);
 
-  dashboardUpdateElapsed += delta
+    dashboardUpdateElapsed += delta;
 
-  if (dashboardUpdateElapsed >= 0.25) {
-    updateSunDashboard(currentSunState, trackerState)
-    dashboardUpdateElapsed = 0
-  }
+    if (dashboardUpdateElapsed >= 0.25) {
 
-  controls.update()
+        updateSunDashboard(currentSunState);
 
-  renderer.render(scene, camera)
+        dashboardUpdateElapsed = 0;
+
+    }
+
+    controls.update();
+
+    renderer.render(scene, camera);
+
 }
 
 animate()

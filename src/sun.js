@@ -1,15 +1,15 @@
 import * as THREE from 'three'
+import * as SunCalc from "suncalc";
+
+const LATITUDE = 12.9716;
+const LONGITUDE = 77.5946;
 
 const DEFAULT_OPTIONS = {
-  orbitRadius: 10,
-  orbitHeight: 5,
-  horizonHeight: 0.35,
-  centerX: 0,
-  centerZ: 0,
-  dayDurationSeconds: 90,
-  initialDayProgress: 0.62,
-  timeSpeedMultiplier: 1
-}
+    orbitRadius: 10,
+    horizonHeight: 0.35,
+    centerX: 0,
+    centerZ: 0
+};
 
 export function createSunSystem(scene, directionalLight, options = {}) {
   const config = {
@@ -50,9 +50,6 @@ export function createSunSystem(scene, directionalLight, options = {}) {
     scene,
     directionalLight,
     sunGroup,
-    dayProgress: config.initialDayProgress,
-    dayDurationSeconds: config.dayDurationSeconds,
-    timeSpeedMultiplier: config.timeSpeedMultiplier,
     autoTracking: true,
     config
   }
@@ -62,27 +59,32 @@ export function createSunSystem(scene, directionalLight, options = {}) {
   return sunSystem
 }
 
-export function updateSunPosition(sunSystem, deltaSeconds = 0) {
-  const dayStep =
-    (deltaSeconds * sunSystem.timeSpeedMultiplier) / sunSystem.dayDurationSeconds
+export function updateSunPosition(sunSystem) {
 
-  sunSystem.dayProgress =
-    deltaSeconds === 0
-      ? THREE.MathUtils.clamp(sunSystem.dayProgress, 0, 1)
-      : wrapDayProgress(sunSystem.dayProgress + dayStep)
+    const angles = calculateSunAngles();
 
-  const angles = calculateSunAngles(sunSystem.dayProgress)
-  const position = calculateSunPosition(angles, sunSystem.config)
+    const position = calculateSunPosition(
+        angles,
+        sunSystem.config
+    );
 
-  sunSystem.sunGroup.position.copy(position)
-  syncDirectionalLight(sunSystem, position, angles.elevation)
+    sunSystem.sunGroup.position.copy(position);
 
-  return {
-    ...angles,
-    position,
-    dayProgress: sunSystem.dayProgress,
-    simulatedTime: formatSimulatedTime(sunSystem.dayProgress)
-  }
+    syncDirectionalLight(
+        sunSystem,
+        position,
+        angles.elevation
+    );
+
+    return {
+        ...angles,
+        position,
+        currentTime: new Date().toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit"
+        })
+    };
+
 }
 
 export function updateTrackerRotation({
@@ -91,6 +93,7 @@ export function updateTrackerRotation({
   deltaSeconds,
   autoTracking
 }) {
+
   if (!sunState) {
     return {
       alignment: 0,
@@ -100,25 +103,50 @@ export function updateTrackerRotation({
   }
 
   const targetTiltAngle = THREE.MathUtils.clamp(
-    THREE.MathUtils.mapLinear(sunState.azimuth, 90, 270, -65, 65),
+    THREE.MathUtils.mapLinear(
+      sunState.azimuth,
+      90,
+      270,
+      -65,
+      65
+    ),
     -65,
     65
   )
-  const targetRoll = THREE.MathUtils.degToRad(targetTiltAngle)
 
-  if (autoTracking) {
-    const trackingStep = THREE.MathUtils.clamp(deltaSeconds * 0.65, 0, 1)
+  const targetRoll = -THREE.MathUtils.degToRad(targetTiltAngle)
 
-    if (trackerRoot) {
-      trackerRoot.rotation.x = 0
-      trackerRoot.rotation.y = -0.2
-      trackerRoot.rotation.z = lerpAngle(trackerRoot.rotation.z, targetRoll, trackingStep)
-    }
+  if (autoTracking && trackerRoot) {
+
+    const trackingStep = THREE.MathUtils.clamp(
+      deltaSeconds * 0.65,
+      0,
+      1
+    )
+
+    trackerRoot.rotation.x = lerpAngle(
+      trackerRoot.rotation.x,
+      targetRoll,
+      trackingStep
+    )
+
   }
 
-  const currentRoll = trackerRoot ? trackerRoot.rotation.z : targetRoll
-  const trackingError = Math.abs(THREE.MathUtils.radToDeg(angleDelta(currentRoll, targetRoll)))
-  const alignment = THREE.MathUtils.clamp(100 - trackingError * 1.6, 0, 100)
+  const currentRoll = trackerRoot
+    ? trackerRoot.rotation.x
+    : targetRoll
+
+  const trackingError = Math.abs(
+    THREE.MathUtils.radToDeg(
+      angleDelta(currentRoll, targetRoll)
+    )
+  )
+
+  const alignment = THREE.MathUtils.clamp(
+    100 - trackingError * 1.6,
+    0,
+    100
+  )
 
   return {
     alignment,
@@ -126,23 +154,28 @@ export function updateTrackerRotation({
     targetTiltAngle
   }
 }
+  
+export function calculateSunAngles() {
 
-export function calculateSunAngles(dayProgress) {
-  const safeProgress = THREE.MathUtils.clamp(dayProgress, 0, 1)
+    const now = new Date();
 
-  return {
-    elevation: Math.sin(safeProgress * Math.PI) * 78,
-    azimuth: 90 + safeProgress * 180
-  }
-}
+    const position = SunCalc.getPosition(
+        now,
+        LATITUDE,
+        LONGITUDE
+    );
 
-export function setSunTimeSpeed(sunSystem, multiplier) {
-  sunSystem.timeSpeedMultiplier = THREE.MathUtils.clamp(Number(multiplier) || 1, 0, 12)
-}
+    return {
 
-export function setSunDayProgress(sunSystem, dayProgress) {
-  sunSystem.dayProgress = THREE.MathUtils.clamp(Number(dayProgress) || 0, 0, 1)
-  return updateSunPosition(sunSystem, 0)
+        elevation: THREE.MathUtils.radToDeg(position.altitude),
+
+        azimuth: THREE.MathUtils.euclideanModulo(
+                      THREE.MathUtils.radToDeg(position.azimuth) + 180,
+                      360
+                  )
+
+    };
+
 }
 
 export function setAutoTracking(sunSystem, enabled) {
@@ -150,37 +183,69 @@ export function setAutoTracking(sunSystem, enabled) {
 }
 
 function createSunPathLine(config) {
-  const points = []
 
-  for (let i = 0; i <= 64; i += 1) {
-    const progress = i / 64
-    const angles = calculateSunAngles(progress)
-    points.push(calculateSunPosition(angles, config))
-  }
+    const radius = config.orbitRadius;
+    const segments = 100;
 
-  const geometry = new THREE.BufferGeometry().setFromPoints(points)
-  const material = new THREE.LineBasicMaterial({
-    color: 0xffc66a,
-    transparent: true,
-    opacity: 0.38
-  })
+    const points = [];
 
-  const line = new THREE.Line(geometry, material)
-  line.name = 'SunPathArc'
+    for (let i = 0; i <= segments; i++) {
 
-  return line
+        const theta = Math.PI * (i / segments);
+
+        points.push(
+            new THREE.Vector3(
+                config.centerX + radius * Math.cos(theta),
+                config.horizonHeight + radius * Math.sin(theta),
+                config.centerZ
+            )
+        );
+
+    }
+
+    const geometry = new THREE.BufferGeometry().setFromPoints(points);
+
+    const material = new THREE.LineDashedMaterial({
+        color: 0xffd34d,
+        dashSize: 0.35,
+        gapSize: 0.15,
+        transparent: true,
+        opacity: 0.8
+    });
+
+    const line = new THREE.Line(geometry, material);
+
+    line.computeLineDistances();
+
+    line.name = "SunPathArc";
+
+    return line;
+
 }
 
 function calculateSunPosition(angles, config) {
-  const elevation = THREE.MathUtils.degToRad(angles.elevation)
-  const azimuth = THREE.MathUtils.degToRad(angles.azimuth)
-  const horizontalRadius = config.orbitRadius * Math.cos(elevation)
 
-  return new THREE.Vector3(
-    config.centerX + Math.sin(azimuth) * horizontalRadius,
-    config.horizonHeight + Math.sin(elevation) * config.orbitHeight,
-    config.centerZ + Math.cos(azimuth) * horizontalRadius
-  )
+    const radius = config.orbitRadius;
+
+    // Map azimuth to the semicircle:
+    // 90° (East)  -> left end
+    // 180° (South)-> top
+    // 270° (West) -> right end
+
+    const t = THREE.MathUtils.clamp(
+        (angles.azimuth - 90) / 180,
+        0,
+        1
+    );
+
+    const theta = Math.PI * (1 - t);
+
+    return new THREE.Vector3(
+        config.centerX + radius * Math.cos(theta),
+        config.horizonHeight + radius * Math.sin(theta),
+        config.centerZ
+    );
+
 }
 
 function syncDirectionalLight(sunSystem, position, elevation) {
@@ -201,20 +266,6 @@ function syncDirectionalLight(sunSystem, position, elevation) {
   if (directionalLight.shadow) {
     directionalLight.shadow.needsUpdate = true
   }
-}
-
-function formatSimulatedTime(dayProgress) {
-  const totalMinutes = 6 * 60 + Math.round(dayProgress * 12 * 60)
-  const hours24 = Math.floor(totalMinutes / 60)
-  const minutes = totalMinutes % 60
-  const suffix = hours24 >= 12 ? 'PM' : 'AM'
-  const hours12 = hours24 % 12 || 12
-
-  return `${hours12}:${String(minutes).padStart(2, '0')} ${suffix}`
-}
-
-function wrapDayProgress(progress) {
-  return ((progress % 1) + 1) % 1
 }
 
 function lerpAngle(current, target, amount) {

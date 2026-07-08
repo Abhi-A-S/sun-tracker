@@ -224,6 +224,10 @@ canvas {
     transform 160ms ease;
 }
 
+.sensor-card:first-child {
+  border-color: rgba(45, 212, 191, 0.25);
+}
+
 .sensor-card:hover {
   border-color: rgba(45, 212, 191, 0.32);
   background: var(--dashboard-panel-strong);
@@ -254,11 +258,6 @@ canvas {
   font-weight: 650;
 }
 
-.control-stack {
-  display: grid;
-  gap: 14px;
-}
-
 .sun-tracking-stack,
 .sun-control-stack {
   display: grid;
@@ -272,65 +271,17 @@ canvas {
   gap: 12px;
 }
 
-.tilt-value {
-  color: var(--dashboard-accent-strong);
-  font-size: 0.95rem;
-  font-weight: 800;
-}
-
 .tilt-slider {
   width: 100%;
   accent-color: var(--dashboard-accent);
   cursor: pointer;
 }
 
-.control-actions {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-}
 
-.control-button {
-  min-height: 38px;
-  border: 1px solid var(--dashboard-border);
-  border-radius: var(--dashboard-radius);
-  background: rgba(255, 255, 255, 0.07);
-  color: var(--dashboard-text);
-  font: inherit;
-  font-size: 0.88rem;
-  font-weight: 750;
-  cursor: pointer;
-  transition:
-    background 160ms ease,
-    border-color 160ms ease,
-    transform 160ms ease;
-}
-
-.control-button:hover {
-  transform: translateY(-1px);
-}
-
-.control-button:focus-visible,
 .dashboard-collapse:focus-visible,
 .tilt-slider:focus-visible {
   outline: 2px solid rgba(45, 212, 191, 0.85);
   outline-offset: 2px;
-}
-
-.control-button.is-primary {
-  border-color: rgba(45, 212, 191, 0.42);
-  background: rgba(45, 212, 191, 0.16);
-  color: var(--dashboard-accent-strong);
-}
-
-.control-button.is-active {
-  box-shadow: 0 0 20px rgba(45, 212, 191, 0.12);
-}
-
-.control-button.is-danger {
-  border-color: rgba(251, 113, 133, 0.36);
-  background: rgba(251, 113, 133, 0.12);
-  color: #fecdd3;
 }
 
 .dashboard-footer {
@@ -392,8 +343,7 @@ canvas {
 
   .status-grid,
   .sensor-grid,
-  .tracking-grid,
-  .control-actions {
+  .tracking-grid {
     grid-template-columns: 1fr;
   }
 
@@ -406,6 +356,7 @@ canvas {
     align-items: flex-start;
     flex-direction: column;
     gap: 5px;
+    padding: 2px 0;
   }
 
   .dashboard-footer-value {

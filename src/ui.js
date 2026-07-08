@@ -1,20 +1,34 @@
 import './ui.css'
 
 const DEFAULT_SENSOR_DATA = {
-  angle: { label: 'Solar Panel Angle', value: 32, unit: 'deg' },
-  sunIntensity: { label: 'Sun Intensity (LDR)', value: 82, unit: '%' }
+  angle: {
+    label: "Servo Angle",
+    value: 0,
+    unit: "deg"
+  },
+
+  left: {
+    label: "LDR Left",
+    value: 0,
+    unit: ""
+  },
+
+  right: {
+    label: "LDR Right",
+    value: 0,
+    unit: ""
+  },
+
+  difference: {
+    label: "Balance",
+    value: 0,
+    unit: ""
+  }
 }
 
 export function createDashboard({
   parent = document.body,
-  onTiltChange,
-  onStart,
-  onStop,
-  onReset,
-  onAutoTrackingChange,
-  onTimeSpeedChange,
-  onManualSunPositionChange
-} = {}) {
+} = {}){
   const dashboard = document.createElement('aside')
   dashboard.className = 'dashboard-shell'
   dashboard.innerHTML = `
@@ -41,7 +55,7 @@ export function createDashboard({
           <div class="dashboard-section-body status-grid">
             <div class="status-item">
               <p class="status-label">Connection</p>
-              <p class="status-value" data-connection-state>Simulated link</p>
+              <p class="status-value" data-connection-state>MQTT Connected</p>
             </div>
             <div class="status-item">
               <p class="status-label">Last Updated</p>
@@ -69,92 +83,39 @@ export function createDashboard({
                 <p class="status-value" data-tracking-status>Auto tracking</p>
               </div>
             </div>
-
-            <div class="sun-control-stack">
-              <button class="control-button is-primary is-active" type="button" data-auto-tracking>
-                Auto Tracking ON
-              </button>
-
-              <div>
-                <div class="tilt-row">
-                  <label class="status-label" for="time-speed">Time Speed</label>
-                  <span class="tilt-value" data-time-speed-value>1.0x</span>
-                </div>
-                <input
-                  class="tilt-slider"
-                  id="time-speed"
-                  data-time-speed-slider
-                  type="range"
-                  min="0"
-                  max="8"
-                  step="0.1"
-                  value="1"
-                />
-              </div>
-
-              <div>
-                <label class="status-label" for="manual-sun-position">Manual Sun Position</label>
-                <input
-                  class="tilt-slider"
-                  id="manual-sun-position"
-                  data-manual-sun-slider
-                  type="range"
-                  min="0"
-                  max="1"
-                  step="0.01"
-                  value="0.62"
-                />
-              </div>
-            </div>
           </div>
         </section>
 
         <section class="dashboard-section" aria-labelledby="sensor-data-title">
           <div class="dashboard-section-header">
-            <h2 class="dashboard-section-title" id="sensor-data-title">Sensor Data</h2>
+            <h2 class="dashboard-section-title" id="sensor-data-title">Live Telemetry</h2>
           </div>
           <div class="dashboard-section-body sensor-grid" data-sensor-grid></div>
-        </section>
-
-        <section class="dashboard-section" aria-labelledby="controls-title">
-          <div class="dashboard-section-header">
-            <h2 class="dashboard-section-title" id="controls-title">Controls</h2>
-            <span class="tilt-value" data-tilt-value>32 deg</span>
-          </div>
-          <div class="dashboard-section-body control-stack">
-            <div>
-              <div class="tilt-row">
-                <label class="status-label" for="tilt-angle">Panel Tilt Angle</label>
-              </div>
-              <input
-                class="tilt-slider"
-                id="tilt-angle"
-                data-tilt-slider
-                type="range"
-                min="-65"
-                max="65"
-                step="1"
-                value="32"
-              />
-            </div>
-            <div class="control-actions">
-              <button class="control-button is-primary" type="button" data-start>Start</button>
-              <button class="control-button is-danger" type="button" data-stop>Stop</button>
-              <button class="control-button" type="button" data-reset>Reset</button>
-            </div>
-          </div>
         </section>
 
       </main>
 
       <footer class="dashboard-footer">
         <div class="dashboard-footer-row">
-          <span class="dashboard-footer-label">ESP32</span>
+          <span class="dashboard-footer-label">Pico W</span>
           <span class="dashboard-footer-value" data-esp32-label>Awaiting device</span>
         </div>
         <div class="dashboard-footer-row">
-          <span class="dashboard-footer-label">MQTT/WebSocket</span>
+          <span class="dashboard-footer-label">MQTT Broker</span>
           <span class="dashboard-footer-value" data-transport-label>Not connected</span>
+        </div>
+        <div class="dashboard-footer-row">
+            <span class="dashboard-footer-label">
+                WebSocket
+            </span>
+
+            <span
+                class="dashboard-footer-value"
+                data-websocket-label>
+
+                Connected
+
+            </span>
         </div>
       </footer>
     </div>
@@ -171,18 +132,9 @@ export function createDashboard({
     connectionState: dashboard.querySelector('[data-connection-state]'),
     lastUpdated: dashboard.querySelector('[data-last-updated]'),
     sensorGrid: dashboard.querySelector('[data-sensor-grid]'),
-    tiltSlider: dashboard.querySelector('[data-tilt-slider]'),
-    tiltValue: dashboard.querySelector('[data-tilt-value]'),
-    startButton: dashboard.querySelector('[data-start]'),
-    stopButton: dashboard.querySelector('[data-stop]'),
-    resetButton: dashboard.querySelector('[data-reset]'),
     sunElevation: dashboard.querySelector('[data-sun-elevation]'),
     sunAzimuth: dashboard.querySelector('[data-sun-azimuth]'),
     trackingStatus: dashboard.querySelector('[data-tracking-status]'),
-    autoTrackingButton: dashboard.querySelector('[data-auto-tracking]'),
-    timeSpeedSlider: dashboard.querySelector('[data-time-speed-slider]'),
-    timeSpeedValue: dashboard.querySelector('[data-time-speed-value]'),
-    manualSunSlider: dashboard.querySelector('[data-manual-sun-slider]'),
     esp32Label: dashboard.querySelector('[data-esp32-label]'),
     transportLabel: dashboard.querySelector('[data-transport-label]')
   }
@@ -196,50 +148,6 @@ export function createDashboard({
       isCollapsed ? 'Expand dashboard' : 'Collapse dashboard'
     )
     elements.collapseIcon.textContent = isCollapsed ? '+' : '-'
-  })
-
-  elements.tiltSlider.addEventListener('input', (event) => {
-    const angle = Number(event.target.value)
-    setTiltAngle(angle)
-    onTiltChange?.(angle)
-  })
-
-  elements.startButton.addEventListener('click', () => {
-    updateStatus({ online: true, connection: 'Simulation running' })
-    onStart?.()
-  })
-
-  elements.stopButton.addEventListener('click', () => {
-    updateStatus({ online: false, connection: 'Simulation stopped' })
-    onStop?.()
-  })
-
-  elements.resetButton.addEventListener('click', () => {
-    setTiltAngle(0)
-    updateSensorData({
-      angle: 0,
-      sunIntensity: DEFAULT_SENSOR_DATA.sunIntensity.value
-    })
-    onReset?.()
-  })
-
-  elements.autoTrackingButton.addEventListener('click', () => {
-    setAutoTracking(!autoTrackingEnabled)
-    onAutoTrackingChange?.(autoTrackingEnabled)
-  })
-
-  elements.timeSpeedSlider.addEventListener('input', (event) => {
-    const multiplier = Number(event.target.value)
-
-    setTimeSpeed(multiplier)
-    onTimeSpeedChange?.(multiplier)
-  })
-
-  elements.manualSunSlider.addEventListener('input', (event) => {
-    const dayProgress = Number(event.target.value)
-
-    setManualSunPosition(dayProgress)
-    onManualSunPositionChange?.(dayProgress)
   })
 
   function updateSensorData(values = {}) {
@@ -269,19 +177,11 @@ export function createDashboard({
     setLastUpdated()
   }
 
-  function setTiltAngle(angle) {
-    const safeAngle = clamp(Math.round(Number(angle) || 0), -65, 65)
-
-    elements.tiltSlider.value = String(safeAngle)
-    elements.tiltValue.textContent = `${safeAngle} deg`
-    updateSensorData({ angle: safeAngle })
-  }
 
   function updateSunTracking({
     elevation,
     azimuth,
-    trackingStatus,
-    dayProgress
+    trackingStatus
   } = {}) {
     if (typeof elevation === 'number') {
       elements.sunElevation.textContent = `${formatSensorValue(elevation)} deg`
@@ -294,32 +194,6 @@ export function createDashboard({
     if (trackingStatus) {
       elements.trackingStatus.textContent = trackingStatus
     }
-
-    if (typeof dayProgress === 'number') {
-      setManualSunPosition(dayProgress)
-    }
-  }
-
-  function setAutoTracking(enabled) {
-    autoTrackingEnabled = Boolean(enabled)
-    elements.autoTrackingButton.classList.toggle('is-active', autoTrackingEnabled)
-    elements.autoTrackingButton.textContent = autoTrackingEnabled
-      ? 'Auto Tracking ON'
-      : 'Auto Tracking OFF'
-    elements.trackingStatus.textContent = autoTrackingEnabled ? 'Auto tracking' : 'Manual control'
-  }
-
-  function setTimeSpeed(multiplier) {
-    const safeMultiplier = clamp(Number(multiplier) || 0, 0, 8)
-
-    elements.timeSpeedSlider.value = String(safeMultiplier)
-    elements.timeSpeedValue.textContent = `${safeMultiplier.toFixed(1)}x`
-  }
-
-  function setManualSunPosition(dayProgress) {
-    const safeProgress = clamp(Number(dayProgress) || 0, 0, 1)
-
-    elements.manualSunSlider.value = String(safeProgress)
   }
 
   function setLastUpdated(date = new Date()) {
@@ -331,40 +205,44 @@ export function createDashboard({
   }
 
   // Future MQTT/WebSocket handlers can call these functions when ESP32 data arrives.
-  function updateConnectionLabels({ esp32, transport } = {}) {
-    if (esp32) {
-      elements.esp32Label.textContent = esp32
+  function updateConnectionLabels({ pico, mqtt, websocket } = {}) {
+
+    if (pico) {
+        elements.esp32Label.textContent = pico
     }
 
-    if (transport) {
-      elements.transportLabel.textContent = transport
+    if (mqtt) {
+        elements.connectionState.textContent = mqtt
+        elements.transportLabel.textContent = mqtt
     }
-  }
+
+    if (websocket) {
+        document.querySelector("[data-websocket-label]").textContent = websocket
+    }
+
+}
 
   updateSensorData({
-    angle: DEFAULT_SENSOR_DATA.angle.value,
-    sunIntensity: DEFAULT_SENSOR_DATA.sunIntensity.value
-  })
-  updateStatus({ online: true, connection: 'Simulated link' })
+    angle: 0,
+    left: 0,
+    right: 0,
+    difference: 0
+})
+  updateStatus({ online: true, connection: 'MQTT Connected' })
 
   updateSunTracking({
-    elevation: 72.5,
-    azimuth: 201.6,
-    trackingStatus: 'Auto tracking',
-    dayProgress: 0.62
-  })
+    elevation: 0,
+    azimuth: 0,
+    trackingStatus: "Waiting..."
+});
 
   return {
-    root: dashboard,
-    updateSensorData,
-    updateStatus,
-    setTiltAngle,
-    setLastUpdated,
-    updateSunTracking,
-    setAutoTracking,
-    setTimeSpeed,
-    setManualSunPosition,
-    updateConnectionLabels
+      root: dashboard,
+      updateSensorData,
+      updateStatus,
+      setLastUpdated,
+      updateSunTracking,
+      updateConnectionLabels
   }
 }
 
