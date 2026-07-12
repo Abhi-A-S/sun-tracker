@@ -22,12 +22,28 @@ const DEFAULT_SENSOR_DATA = {
   difference: {
     label: "Balance",
     value: 0,
-    unit: ""
+    unit: "%"
+  },
+
+  temperature: {
+    label: "Temperature",
+    value: 0,
+    unit: "°C"
+  },
+
+  humidity: {
+    label: "Humidity",
+    value: 0,
+    unit: "%"
   }
 }
 
 export function createDashboard({
   parent = document.body,
+
+  onModeChange = () => {},
+
+  onAngleChange = () => {}
 } = {}){
   const dashboard = document.createElement('aside')
   dashboard.className = 'dashboard-shell'
@@ -86,19 +102,103 @@ export function createDashboard({
           </div>
         </section>
 
-        <section class="dashboard-section" aria-labelledby="sensor-data-title">
+                <section class="dashboard-section" aria-labelledby="tracking-control-title">
+
           <div class="dashboard-section-header">
-            <h2 class="dashboard-section-title" id="sensor-data-title">Live Telemetry</h2>
+
+            <h2 class="dashboard-section-title" id="tracking-control-title">
+
+              Tracking Control
+
+            </h2>
+
           </div>
-          <div class="dashboard-section-body sensor-grid" data-sensor-grid></div>
+
+          <div class="dashboard-section-body">
+
+            <div class="tracking-mode">
+
+              <label>
+
+                <input
+                  type="radio"
+                  name="tracking-mode"
+                  value="AUTO"
+                  checked
+                  data-auto-radio>
+
+                Auto
+
+              </label>
+
+              <label>
+
+                <input
+                  type="radio"
+                  name="tracking-mode"
+                  value="MANUAL"
+                  data-manual-radio>
+
+                Manual
+
+              </label>
+
+            </div>
+
+            <div class="manual-angle">
+
+              <label>Manual Angle</label>
+
+              <input
+                type="range"
+                min="-30"
+                max="30"
+                value="0"
+                data-angle-slider
+                disabled>
+
+              <div
+                class="manual-angle-value"
+                data-angle-value>
+
+                0°
+
+              </div>
+
+            </div>
+
+          </div>
+
+        </section>
+
+        <section class="dashboard-section" aria-labelledby="sensor-data-title">
+
+          <div class="dashboard-section-header">
+
+            <h2 class="dashboard-section-title" id="sensor-data-title">
+
+              Live Telemetry
+
+            </h2>
+
+          </div>
+
+          <div
+            class="dashboard-section-body sensor-grid"
+            data-sensor-grid>
+
+          </div>
+
         </section>
 
       </main>
 
       <footer class="dashboard-footer">
         <div class="dashboard-footer-row">
-          <span class="dashboard-footer-label">Pico W</span>
-          <span class="dashboard-footer-value" data-esp32-label>Awaiting device</span>
+            <span class="dashboard-footer-label">ESP32</span>
+            <span class="dashboard-footer-value" data-esp32-label>
+                Awaiting device
+            </span>
         </div>
         <div class="dashboard-footer-row">
           <span class="dashboard-footer-label">MQTT Broker</span>
@@ -136,11 +236,52 @@ export function createDashboard({
     sunAzimuth: dashboard.querySelector('[data-sun-azimuth]'),
     trackingStatus: dashboard.querySelector('[data-tracking-status]'),
     esp32Label: dashboard.querySelector('[data-esp32-label]'),
-    transportLabel: dashboard.querySelector('[data-transport-label]')
+    transportLabel: dashboard.querySelector('[data-transport-label]'),
+    autoRadio:
+        dashboard.querySelector("[data-auto-radio]"),
+
+    manualRadio:
+        dashboard.querySelector("[data-manual-radio]"),
+
+    angleSlider:
+        dashboard.querySelector("[data-angle-slider]"),
+
+    angleValue:
+        dashboard.querySelector("[data-angle-value]")
   }
 
   const sensorElements = createSensorCards(elements.sensorGrid, DEFAULT_SENSOR_DATA)
-  let autoTrackingEnabled = true
+  elements.autoRadio.addEventListener("change", () => {
+
+      if (!elements.autoRadio.checked)
+          return;
+
+      elements.angleSlider.disabled = true;
+
+      onModeChange("AUTO");
+
+  });
+
+  elements.manualRadio.addEventListener("change", () => {
+
+      if (!elements.manualRadio.checked)
+          return;
+
+      elements.angleSlider.disabled = false;
+
+      onModeChange("MANUAL");
+
+  });
+
+  elements.angleSlider.addEventListener("input", () => {
+
+      const angle = Number(elements.angleSlider.value);
+
+      elements.angleValue.textContent = `${angle}°`;
+
+      onAngleChange(angle);
+
+  });
   elements.collapseButton.addEventListener('click', () => {
     const isCollapsed = elements.panel.classList.toggle('is-collapsed')
     elements.collapseButton.setAttribute(
@@ -220,14 +361,31 @@ export function createDashboard({
         document.querySelector("[data-websocket-label]").textContent = websocket
     }
 
-}
+  }
+
+  function updateTrackingMode(autoMode)
+  {
+      elements.autoRadio.checked = autoMode;
+
+      elements.manualRadio.checked = !autoMode;
+
+      elements.angleSlider.disabled = autoMode;
+  }
+
+  function setManualAngle(angle)
+  {
+      elements.angleSlider.value = angle;
+      elements.angleValue.textContent = `${angle}°`;
+  }
 
   updateSensorData({
     angle: 0,
     left: 0,
     right: 0,
-    difference: 0
-})
+    difference: 0,
+    temperature: 0,
+    humidity: 0
+  })
   updateStatus({ online: true, connection: 'MQTT Connected' })
 
   updateSunTracking({
@@ -236,13 +394,17 @@ export function createDashboard({
     trackingStatus: "Waiting..."
 });
 
+  updateTrackingMode(true, 0);
+
   return {
       root: dashboard,
       updateSensorData,
       updateStatus,
       setLastUpdated,
       updateSunTracking,
-      updateConnectionLabels
+      updateConnectionLabels,
+      updateTrackingMode,
+      setManualAngle
   }
 }
 

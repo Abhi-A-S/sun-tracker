@@ -294,3 +294,24 @@ code {
     border-right-color: var(--border);
   }
 }
+
+.floatingLabel {
+    color: #fff;
+    background: rgba(0,0,0,0.72);
+    border: 1px solid #00d5c7;
+    border-radius: 4px;
+
+    padding: 3px 6px;
+
+    font-size: 10px;
+    line-height: 1.2;
+    font-family: Inter, sans-serif;
+
+    white-space: nowrap;
+    text-align: center;
+
+    user-select: none;
+
+    background: rgba(20,20,20,0.3);
+    backdrop-filter: blur(4px);
+}

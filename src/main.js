@@ -10,10 +10,58 @@ import {
   updateHardwareSun
 } from './sun.js'
 
+import { CSS2DRenderer, CSS2DObject } from
+'three/examples/jsm/renderers/CSS2DRenderer.js';
+
+let lastAutoMode = true;
 const socket = new WebSocket("ws://localhost:8081");
+
+window.socket = socket;
+
+socket.onopen = () => {
+
+    console.log("WebSocket Connected");
+
+};
+
+socket.onclose = () => {
+
+    console.log("WebSocket Disconnected");
+
+};
+
+function sendCommand(command)
+{
+
+    if (socket.readyState !== WebSocket.OPEN)
+        return;
+
+    socket.send(JSON.stringify(command));
+
+}
+
+socket.onerror = (err) => {
+    console.error("WebSocket Error:", err);
+};
+
 socket.onmessage = (event) => {
 
     const data = JSON.parse(event.data);
+
+    if (panelLabel) {
+
+        panelLabel.element.innerHTML =
+            `Angle: ${data.angle}°`;
+
+    }
+
+    if (dhtLabel) {
+
+        dhtLabel.element.innerHTML =
+            `🌡 ${data.temperature.toFixed(1)}°C<br>
+            💧 ${data.humidity.toFixed(1)}%`;
+
+    }
 
     console.log(data);
 
@@ -32,7 +80,9 @@ socket.onmessage = (event) => {
         angle: data.angle,
         left: data.left,
         right: data.right,
-        difference: (data.normalized * 100).toFixed(1)
+        difference: (data.normalized * 100).toFixed(1),
+        temperature: data.temperature,
+        humidity: data.humidity
     });
 
     dashboard.updateSunTracking({
@@ -61,11 +111,28 @@ socket.onmessage = (event) => {
         websocket: "Connected"
     });
 
+    // AUTO -> MANUAL
+    if (lastAutoMode && !data.auto)
+    {
+        dashboard.setManualAngle(data.angle);
+    }
+
+    // MANUAL -> AUTO
+    if (!lastAutoMode && data.auto)
+    {
+        dashboard.setManualAngle(data.angle);
+    }
+
+    lastAutoMode = data.auto;
+
+    dashboard.updateTrackingMode(data.auto);
+
 };
 
 let baseModel
 let panelModel
 let panelObject
+let dhtModel
 
 let dashboard
 let sunSystem
@@ -77,6 +144,11 @@ const TRACKER_OFFSET_X = 0
 const TRACKER_OFFSET_Z = 0
 const SUN_OFFSET_Z = 0
 const MODEL_SCALE = 0.02
+
+let panelLabel;
+let dhtLabel;
+
+let modelColor = 0x888888;
 
 // Scene
 const scene = new THREE.Scene()
@@ -105,23 +177,43 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
 document.body.innerHTML = ''
 document.body.appendChild(renderer.domElement)
 
+
+const labelRenderer = new CSS2DRenderer();
+
+labelRenderer.setSize(window.innerWidth, window.innerHeight);
+
+labelRenderer.domElement.style.position = "absolute";
+labelRenderer.domElement.style.top = "0";
+labelRenderer.domElement.style.pointerEvents = "none";
+
+document.body.appendChild(labelRenderer.domElement);
+
 dashboard = createDashboard({
-    onTimeSpeedChange: (multiplier) => {
-        if (sunSystem) {
-            setSunTimeSpeed(sunSystem, multiplier);
-        }
+
+    onModeChange: (mode) => {
+
+        sendCommand({
+
+            command: "SET_MODE",
+
+            mode
+
+        });
+
     },
 
-    onManualSunPositionChange: (dayProgress) => {
-        if (sunSystem) {
-            currentSunState = setSunDayProgress(
-                sunSystem,
-                dayProgress
-            );
+    onAngleChange: (angle) => {
 
-            updateSunDashboard(currentSunState);
-        }
+        sendCommand({
+
+            command: "SET_ANGLE",
+
+            angle
+
+        });
+
     }
+
 });
 
 dashboard.updateConnectionLabels({
@@ -167,10 +259,10 @@ updateSunDashboard(currentSunState, {
 const planeGeometry = new THREE.PlaneGeometry(25, 25)
 
 const planeMaterial = new THREE.MeshStandardMaterial({
-  color: 0x666666,
-  roughness: 0.8,
-  metalness: 0.2
-})
+    color: modelColor,
+    roughness: 1.0,
+    metalness: 0.0
+});
 
 const plane = new THREE.Mesh(
   planeGeometry,
@@ -184,7 +276,15 @@ plane.receiveShadow = true
 
 scene.add(plane)
 
-const gridHelper = new THREE.GridHelper(25, 50, 0x888888, 0x444444)
+const gridHelper = new THREE.GridHelper(
+    25,
+    50,
+    0x777777,
+    0x2f2f2f
+);
+
+gridHelper.material.transparent = true;
+gridHelper.material.opacity = 0.45;
 
 scene.add(gridHelper)
 
@@ -288,9 +388,14 @@ loader.load('/models/Base.glb', (gltf) => {
 
             child.castShadow = true
             child.receiveShadow = true
-            child.material.side = THREE.DoubleSide
-            child.material.flatShading = false
-            child.material.needsUpdate = true
+            child.material = new THREE.MeshStandardMaterial({
+                color: modelColor,
+                roughness: 0.6,
+                metalness: 0.15
+            });
+
+            child.castShadow = true;
+            child.receiveShadow = true;
 
         }
 
@@ -323,19 +428,93 @@ loader.load('/models/Panel.glb', (gltf) => {
 
         if (child.isMesh) {
 
-            child.castShadow = true
-            child.receiveShadow = true
-            child.material.side = THREE.DoubleSide
-            child.material.flatShading = false
-            child.material.needsUpdate = true
+            child.material = new THREE.MeshStandardMaterial({
+                color: modelColor,
+                roughness: 0.6,
+                metalness: 0.15
+            });
+
+            child.material.side = THREE.DoubleSide;
+
+            child.castShadow = true;
+            child.receiveShadow = true;
 
         }
 
     })
 
     console.log("Panel Loaded")
+    
+    const div = document.createElement("div");
+    div.className = "floatingLabel";
+    div.innerHTML = "Angle: 0°";
+
+    panelLabel = new CSS2DObject(div);
+
+    panelLabel.position.set(80, 0.25, 0);
+
+    panelModel.add(panelLabel);
 
 })
+
+loader.load('/models/dht22_lowpoly.glb', (gltf) => {
+
+    dhtModel = gltf.scene;
+
+    scene.add(dhtModel);
+
+    dhtModel.scale.setScalar(15);
+
+    dhtModel.rotation.y = THREE.MathUtils.degToRad(90);
+
+    const box = new THREE.Box3().setFromObject(dhtModel);
+    const center = box.getCenter(new THREE.Vector3());
+
+    dhtModel.position.x += TRACKER_OFFSET_X - center.x;
+    dhtModel.position.z += TRACKER_OFFSET_Z - center.z;
+    dhtModel.position.y -= box.min.y;
+
+    // -------- Position beside the tracker --------
+    dhtModel.position.x = 0;
+    dhtModel.position.y = 1.75;
+    dhtModel.position.z = -1.4;
+    dhtModel.rotation.y = THREE.MathUtils.degToRad(180);
+    dhtModel.rotation.z = THREE.MathUtils.degToRad(270);
+    // ---------------------------------------------
+
+    dhtModel.traverse((child) => {
+
+        if (child.isMesh) {
+
+            child.material = new THREE.MeshStandardMaterial({
+
+                color: modelColor,
+                roughness: 0.75,
+                metalness: 0.05
+
+            });
+
+            child.castShadow = true;
+            child.receiveShadow = true;
+
+        }
+
+    });
+
+    console.log("DHT22 Loaded");
+
+    const div = document.createElement("div");
+    div.className = "floatingLabel";
+    div.innerHTML =
+    `Temp: --°C<br>Humidity: --%`;
+
+    dhtLabel = new CSS2DObject(div);
+
+    dhtLabel.position.set(0.035, 0, 0);
+
+    dhtModel.add(dhtLabel);
+
+});
 
 // Resize
 window.addEventListener('resize', () => {
@@ -388,6 +567,7 @@ function animate() {
     controls.update();
 
     renderer.render(scene, camera);
+    labelRenderer.render(scene, camera);
 
 }
 
